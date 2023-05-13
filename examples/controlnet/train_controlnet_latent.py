@@ -620,7 +620,7 @@ def make_train_dataset(args, tokenizer, accelerator):
             )
 
     if args.caption_column is None:
-        caption_column = column_names[1]
+        caption_column = column_names[3]
         logger.info(f"caption column defaulting to {caption_column}")
     else:
         caption_column = args.caption_column
@@ -630,7 +630,7 @@ def make_train_dataset(args, tokenizer, accelerator):
             )
 
     if args.conditioning_image_column is None:
-        conditioning_image_column = column_names[2]
+        conditioning_image_column = column_names[1]
         logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
     else:
         conditioning_image_column = args.conditioning_image_column
@@ -638,6 +638,10 @@ def make_train_dataset(args, tokenizer, accelerator):
             raise ValueError(
                 f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
+        
+    conditioning_latent_column = column_names[2]
+    logger.info(f"conditioning latent column defaulting to {conditioning_latent_column}")
+
 
     def tokenize_captions(examples, is_train=True):
         captions = []
@@ -675,6 +679,10 @@ def make_train_dataset(args, tokenizer, accelerator):
         ]
     )
 
+    #Expand the latent dimension from 768 to 77*768 to match the size of the encoder_hidden_states
+    def expand_latent(latent):
+        return torch.repeat_interleave(latent, 77, dim=0) 
+
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         images = [image_transforms(image) for image in images]
@@ -685,6 +693,7 @@ def make_train_dataset(args, tokenizer, accelerator):
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
         examples["input_ids"] = tokenize_captions(examples)
+        examples["conditioning_latent"] =[expand_latent(latent) for latent in examples[conditioning_latent_column]]
 
         return examples
 
@@ -706,10 +715,13 @@ def collate_fn(examples):
 
     input_ids = torch.stack([example["input_ids"] for example in examples])
 
+    conditioning_latent = torch.stack([example["conditioning_latent"] for example in examples])
+
     return {
         "pixel_values": pixel_values,
         "conditioning_pixel_values": conditioning_pixel_values,
         "input_ids": input_ids,
+        "conditioning_latent": conditioning_latent,
     }
 
 
@@ -1017,7 +1029,7 @@ def main(args):
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
                 #Get the image latent space for conditioning
-                controlnet_latents = batch["conditioning_latents"].to(dtype=weight_dtype)
+                controlnet_latents = batch["conditioning_latent"].to(dtype=weight_dtype)
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
