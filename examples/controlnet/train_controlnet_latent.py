@@ -681,7 +681,8 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     #Expand the latent dimension from 768 to 77*768 to match the size of the encoder_hidden_states
     def expand_latent(latent):
-        return torch.repeat_interleave(latent, 77, dim=0) 
+        latent_tensor = torch.tensor(latent)
+        return torch.repeat_interleave(latent_tensor, 77, dim=0) 
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
