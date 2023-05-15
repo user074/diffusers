@@ -1029,6 +1029,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                conditioning_latent = torch.cat([conditioning_latent] * 2) if do_classifier_free_guidance else conditioning_latent
+
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
