@@ -338,6 +338,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
+    
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -812,6 +813,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         guess_mode: bool = False,
+        conditioning_latent: Optional[torch.FloatTensor] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -941,6 +943,18 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
+        # 3.1 Prepare the conditioning latent for the controlnet
+        if conditioning_latent is not None:
+            conditioning_latent = conditioning_latent.to(dtype=prompt_embeds.dtype, device=device)
+            if conditioning_latent.ndim == 1:
+                conditioning_latent = conditioning_latent.unsqueeze(0).expand(batch_size, -1)
+            if conditioning_latent.shape[0] != batch_size:
+                raise ValueError(
+                    f"Expected `conditioning_latent` to have a batch dimension of size {batch_size}, but got "
+                    f"{conditioning_latent.shape[0]}."
+                )
+        
+
         # 4. Prepare image
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
@@ -1024,15 +1038,26 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     controlnet_latent_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    controlnet_latent_model_input,
-                    t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image,
-                    conditioning_scale=controlnet_conditioning_scale,
-                    guess_mode=guess_mode,
-                    return_dict=False,
-                )
+                if conditioning_latent is not None:
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        controlnet_latent_model_input,
+                        t,
+                        encoder_hidden_states=conditioning_latent,
+                        controlnet_cond=image,
+                        conditioning_scale=controlnet_conditioning_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
+                else:
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        controlnet_latent_model_input,
+                        t,
+                        encoder_hidden_states=controlnet_prompt_embeds,
+                        controlnet_cond=image,
+                        conditioning_scale=controlnet_conditioning_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
 
                 if guess_mode and do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
