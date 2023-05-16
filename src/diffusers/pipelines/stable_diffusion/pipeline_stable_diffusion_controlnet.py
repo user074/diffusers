@@ -1020,6 +1020,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        conditioning_latent = torch.cat([conditioning_latent] * 2) if do_classifier_free_guidance else conditioning_latent
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1029,7 +1030,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                conditioning_latent = torch.cat([conditioning_latent] * 2) if do_classifier_free_guidance else conditioning_latent
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
