@@ -115,6 +115,10 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
 
     image_logs = []
 
+    if args.validation_condition_latent is not None:
+        validation_condition_latent = torch.tensor(args.validation_condition_latent)
+
+
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
 
@@ -122,9 +126,18 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
 
         for _ in range(args.num_validation_images):
             with torch.autocast("cuda"):
-                image = pipeline(
-                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
-                ).images[0]
+                if args.validation_condition_latent is not None:
+                    image = pipeline(
+                        validation_prompt,
+                        validation_image,
+                        num_inference_steps=20,
+                        generator=generator,
+                        condition_latent=validation_condition_latent
+                    ).images[0]
+                else:
+                    image = pipeline(
+                        validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                    ).images[0]
 
             images.append(image)
 
@@ -540,6 +553,12 @@ def parse_args(input_args=None):
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
+    )
+    parser.add_argument(
+        "--validation_condition_latent",
+        type=list,
+        default=None,
+        help="A list of latent vectors to be used for validation. If not specified, no latents will be used.",
     )
 
     if input_args is not None:
